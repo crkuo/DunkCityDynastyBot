@@ -11,7 +11,7 @@ a = Analysis(
     datas=[
         ('main.ui', '.'),                  # 載入 UI
     ],
-    hiddenimports=[],
+    hiddenimports=['PyQt6.QtCore', 'PyQt6.QtGui', 'PyQt6.QtWidgets'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
