@@ -40,6 +40,53 @@ jobs:
         copy LICENSE packaged\
         powershell Compress-Archive -Path packaged\* -DestinationPath DunkCityDynastyBot_win.zip
 
+    - name: Parse tag info
+      id: tag
+      run: |
+        CURRENT_TAG="${GITHUB_REF#refs/tags/}"
+        echo "Current tag: $CURRENT_TAG"
+
+        if [[ "$CURRENT_TAG" == *_rc* ]]; then
+          echo "Detected RC version, skipping cleanup"
+          echo "skip_cleanup=true" >> "$GITHUB_OUTPUT"
+          echo "base_tag=SKIP" >> "$GITHUB_OUTPUT"
+        else
+          echo "Detected formal version, will clean rc releases"
+          echo "skip_cleanup=false" >> "$GITHUB_OUTPUT"
+          echo "base_tag=$CURRENT_TAG" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Delete _rc releases and tags
+      if: steps.tag.outputs.skip_cleanup == 'false'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        BASE_TAG: ${{ steps.tag.outputs.base_tag }}
+      run: |
+        echo "Looking for releases & tags starting with ${BASE_TAG}_rc"
+
+        # === Delete matching releases ===
+        releases=$(curl -s -H "Authorization: token $GH_TOKEN" \
+          https://api.github.com/repos/${{ github.repository }}/releases)
+
+        ids_to_delete=$(echo "$releases" | jq -r ".[] | select(.tag_name | startswith(\"${BASE_TAG}_rc\")) | .id")
+
+        for id in $ids_to_delete; do
+          echo "Deleting release ID: $id"
+          curl -s -X DELETE -H "Authorization: token $GH_TOKEN" \
+            https://api.github.com/repos/${{ github.repository }}/releases/$id
+        done
+
+        # === Delete matching tags ===
+        tags=$(curl -s -H "Authorization: token $GH_TOKEN" \
+          https://api.github.com/repos/${{ github.repository }}/git/refs/tags)
+
+        tag_names=$(echo "$tags" | jq -r ".ref" | grep "^refs/tags/${BASE_TAG}_rc")
+
+        for tag_ref in $tag_names; do
+          echo "Deleting tag: $tag_ref"
+          curl -s -X DELETE -H "Authorization: token $GH_TOKEN" \
+            https://api.github.com/repos/${{ github.repository }}/$tag_ref
+        done
     - name: Upload Release Asset
       uses: softprops/action-gh-release@v2
       with:
