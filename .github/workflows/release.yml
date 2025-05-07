@@ -76,9 +76,16 @@ jobs:
         ids_to_delete=$(echo "$releases" | jq -r ".[] | select(.tag_name | startswith(\"${BASE_TAG}_rc\")) | .id")
 
         for id in $ids_to_delete; do
-          echo "🔥 Deleting release ID: $id"
-          curl -s -X DELETE -H "Authorization: token $GH_TOKEN" \
-            https://api.github.com/repos/${{ github.repository }}/releases/$id
+        echo "🔥 Deleting release ID: $id"
+        status_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+          -H "Authorization: token $GH_TOKEN" \
+          "https://api.github.com/repos/${{ github.repository }}/releases/$id")
+
+        if [[ "$status_code" != "204" ]]; then
+          echo "⚠️ Failed to delete release ID $id (HTTP $status_code)"
+        else
+          echo "✅ Release ID $id deleted."
+        fi
         done
 
         # === Find and delete matching tags ===
@@ -92,8 +99,15 @@ jobs:
 
         for tag_ref in $tag_names; do
           echo "🔥 Deleting tag: $tag_ref"
-          curl -s -X DELETE -H "Authorization: token $GH_TOKEN" \
-            https://api.github.com/repos/${{ github.repository }}/$tag_ref
+          status_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+            -H "Authorization: token $GH_TOKEN" \
+            https://api.github.com/repos/${{ github.repository }}/$tag_ref)
+
+          if [[ "$status_code" != "204" ]]; then
+            echo "⚠️ Failed to delete tag $tag_ref (HTTP $status_code)"
+          else
+            echo "✅ Tag $tag_ref deleted."
+          fi
         done
 
     - name: Upload Release Asset
