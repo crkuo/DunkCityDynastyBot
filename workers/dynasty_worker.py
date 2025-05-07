@@ -73,7 +73,7 @@ class DynastyWorker(AbstractMatchWorker):
                     self.emitLog.emit("配對次數已達上限")
                     break
                 
-                self.emitLog.emit(f"> 第{self.numOfProcessMatches}場比賽開始 <")
+                self.emitLog.emit(f"> 第{self.numOfProcessMatches + 1}場比賽開始 <")
                 if not self.__click_image(startMatch):
                     self.emitLog.emit("未找到配對按鈕")
                     continue
