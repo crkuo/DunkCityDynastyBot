@@ -33,44 +33,39 @@ jobs:
       env:
         BASE_TAG: ${{ steps.tag.outputs.base_tag }}
       run: |
+        if [[ -z "${{ secrets.GITHUB_TOKEN }}" ]]; then
+          echo "❌ Error: GITHUB_TOKEN is not set. Exiting."
+          exit 1
+        fi
+
         echo "🔍 Looking for releases & tags starting with ${BASE_TAG}_rc"
 
-        # === Delete matching releases ===
-        releases=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+        # === Find matching releases ===
+        releases=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
           https://api.github.com/repos/${{ github.repository }}/releases)
 
-        ids_to_delete=$(echo "$releases" | jq -r ".[] | select(.tag_name | startswith(\"${BASE_TAG}_rc\")) | .id")
-        tag_names=$(echo "$releases" | jq -r ".[] | select(.tag_name | startswith(\"${BASE_TAG}_rc\")) | .tag_name")
-
         echo "🗒️ Matched releases to delete:"
-        echo "$tag_names"
+        echo "$releases" | jq -r ".[] | select(.tag_name | startswith(\"${BASE_TAG}_rc\")) | .tag_name"
+
+        ids_to_delete=$(echo "$releases" | jq -r ".[] | select(.tag_name | startswith(\"${BASE_TAG}_rc\")) | .id")
 
         for id in $ids_to_delete; do
+          echo "🔗 Deleting release URL: https://api.github.com/repos/${{ github.repository }}/releases/$id"
+
           echo "🔥 Deleting release ID: $id"
-          url="https://api.github.com/repos/${{ github.repository }}/releases/$id"
+          status_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/$id")
 
-          http_status=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$url")
-          curl_exit=$?
-
-          echo "↪ curl exit code: $curl_exit"
-          echo "↪ HTTP status: $http_status"
-
-          if [[ "$curl_exit" -ne 0 ]]; then
-            echo "❌ curl failed (exit $curl_exit) while deleting $url"
-            continue
-          elif [[ "$http_status" != "204" ]]; then
-            echo "⚠️ Failed to delete release ID $id (HTTP $http_status)"
-            echo "🔍 Response:"
-            curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$url"
-            continue
+          if [[ "$status_code" != "204" ]]; then
+            echo "⚠️ Failed to delete release ID $id (HTTP $status_code)."
           else
             echo "✅ Release ID $id deleted."
           fi
         done
 
-        # === Delete matching tags ===
-        tags=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+        # === Find and delete matching tags ===
+        tags=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
           https://api.github.com/repos/${{ github.repository }}/git/refs/tags)
 
         tag_refs=$(echo "$tags" | jq -r ".[] | .ref" | grep "^refs/tags/${BASE_TAG}_rc")
@@ -86,28 +81,19 @@ jobs:
           short_ref="${tag_ref#refs/}"  # tags/xxx
           echo "🔥 Deleting tag: $short_ref"
 
-          tag_url="https://api.github.com/repos/${{ github.repository }}/git/refs/$short_ref"
+          status_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/git/refs/$short_ref")
 
-          http_status=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$tag_url")
-          curl_exit=$?
-
-          echo "↪ curl exit code: $curl_exit"
-          echo "↪ HTTP status: $http_status"
-
-          if [[ "$curl_exit" -ne 0 ]]; then
-            echo "❌ curl failed (exit $curl_exit) while deleting $tag_url"
-            continue
-          elif [[ "$http_status" != "204" ]]; then
-            echo "⚠️ Failed to delete tag $short_ref (HTTP $http_status)"
-            echo "🔍 Response:"
-            curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$tag_url"
-            continue
+          if [[ "$status_code" != "204" ]]; then
+            echo "⚠️ Failed to delete tag $short_ref (HTTP $status_code)."
+            echo "Response:"
+            curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/git/refs/$short_ref"
           else
             echo "✅ Tag $short_ref deleted."
           fi
         done
-
     - name: Checkout code
       uses: actions/checkout@v4
 
