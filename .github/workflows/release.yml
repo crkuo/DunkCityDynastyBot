@@ -50,6 +50,8 @@ jobs:
         ids_to_delete=$(echo "$releases" | jq -r ".[] | select(.tag_name | startswith(\"${BASE_TAG}_rc\")) | .id")
 
         for id in $ids_to_delete; do
+          echo "🔗 Deleting release URL: https://api.github.com/repos/${{ github.repository }}/releases/$id"
+
           echo "🔥 Deleting release ID: $id"
           status_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
