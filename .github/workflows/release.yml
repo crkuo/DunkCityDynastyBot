@@ -64,6 +64,11 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         BASE_TAG: ${{ steps.tag.outputs.base_tag }}
       run: |
+        if [[ -z "$GH_TOKEN" ]]; then
+            echo "❌ Error: GH_TOKEN is not set. Exiting."
+            exit 1
+        fi
+
         echo "🔍 Looking for releases & tags starting with ${BASE_TAG}_rc"
 
         # === Find matching releases ===
@@ -76,37 +81,46 @@ jobs:
         ids_to_delete=$(echo "$releases" | jq -r ".[] | select(.tag_name | startswith(\"${BASE_TAG}_rc\")) | .id")
 
         for id in $ids_to_delete; do
-        echo "🔥 Deleting release ID: $id"
-        status_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
-          -H "Authorization: token $GH_TOKEN" \
-          "https://api.github.com/repos/${{ github.repository }}/releases/$id")
+          echo "🔥 Deleting release ID: $id"
+          status_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+            -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/$id")
 
-        if [[ "$status_code" != "204" ]]; then
-          echo "⚠️ Failed to delete release ID $id (HTTP $status_code)"
-        else
-          echo "✅ Release ID $id deleted."
-        fi
+          if [[ "$status_code" != "204" ]]; then
+            echo "⚠️ Failed to delete release ID $id (HTTP $status_code)."
+          else
+            echo "✅ Release ID $id deleted."
+          fi
         done
 
         # === Find and delete matching tags ===
         tags=$(curl -s -H "Authorization: token $GH_TOKEN" \
           https://api.github.com/repos/${{ github.repository }}/git/refs/tags)
 
-        echo "🗒️ Matched tags to delete:"
-        tag_names=$(echo "$tags" | jq -r ".ref" | grep "^refs/tags/${BASE_TAG}_rc")
+        tag_refs=$(echo "$tags" | jq -r ".[] | .ref" | grep "^refs/tags/${BASE_TAG}_rc")
 
-        echo "$tag_names"
+        if [[ -z "$tag_refs" ]]; then
+          echo "✅ No matching tags to delete."
+        else
+          echo "🗒️ Matched tags to delete:"
+          echo "$tag_refs"
+        fi
 
-        for tag_ref in $tag_names; do
-          echo "🔥 Deleting tag: $tag_ref"
+        for tag_ref in $tag_refs; do
+          short_ref="${tag_ref#refs/}"  # tags/xxx
+          echo "🔥 Deleting tag: $short_ref"
+
           status_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
             -H "Authorization: token $GH_TOKEN" \
-            https://api.github.com/repos/${{ github.repository }}/git/refs/tags/$tag_ref)
+            "https://api.github.com/repos/${{ github.repository }}/git/refs/$short_ref")
 
           if [[ "$status_code" != "204" ]]; then
-            echo "⚠️ Failed to delete tag $tag_ref (HTTP $status_code)"
+            echo "⚠️ Failed to delete tag $short_ref (HTTP $status_code)."
+            echo "Response:"
+            curl -s -H "Authorization: token $GH_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/git/refs/$short_ref"
           else
-            echo "✅ Tag $tag_ref deleted."
+            echo "✅ Tag $short_ref deleted."
           fi
         done
 
