@@ -21,6 +21,7 @@ class FvfWorker(AbstractMatchWorker):
         self.startTimes = 0
         self.device = None
         self.numOfProcessMatches = 0
+        self.numOfLoseMatches = 0
         self.mode = "FVF"
 
     def LoadConfig(self):
@@ -40,7 +41,9 @@ class FvfWorker(AbstractMatchWorker):
         self.isTerminate = not self.isTerminate
 
     def export_report(self):
-        self.emitLog.emit(f"共進行了 {self.numOfProcessMatches} 場比賽")
+        if self.numOfProcessMatches > 0:
+            wins = self.numOfProcessMatches - self.numOfLoseMatches
+            self.emitLog.emit(f"共進行了{self.numOfProcessMatches}場，共贏了{wins}場，勝率為 {wins/self.numOfProcessMatches*100:.2f}%")
 
     def run(self):
         def load_img(name):
@@ -59,32 +62,42 @@ class FvfWorker(AbstractMatchWorker):
             assert backToLobby is not None, "載入圖片失敗: fvfback"
             assert reachLimit is not None, "載入圖片失敗: reachLimit"
             assert modeCheck is not None, "載入圖片失敗: modeCheck"
+            assert matchFinish is not None, "載入圖片失敗: matchFinish"
+            assert matchLose is not None, "載入圖片失敗: matchLose"
+            if not self.__find_image(modeCheck):
+                self.emitLog.emit("非【五對五全場爭霸】畫面")
+                self.emitError.emit()
+                return
             while self.startTimes > 0 and not self.isTerminate:
                 try:
-                    if not self.__find_image(modeCheck):
-                        self.emitLog.emit("非【五對五全場爭霸】畫面")
-                        self.emitError.emit()
-                        return
                     if self.__click_image(reachLimit):
                         self.emitLog.emit("配對次數已達上限")
                         break
 
                     self.emitLog.emit(f"> 第{self.numOfProcessMatches + 1}場比賽開始 <")
-                    if not self.__click_image(startMatch):
-                        self.emitLog.emit("未找到配對按鈕")
-                        continue
                     self.emitLog.emit("開始配對")
+                    while not self.__click_image(startMatch):
+                        self.emitLog.emit("未找到配對按鈕")
+                        self.__sleep(1)
+                        print("Cannot find match button.")
                     self.startTimes -= 1
                     self.numOfProcessMatches += 1
                     self.__sleep(5)
 
                     self.__sleep(matchDefaultTime, 10)
-
-                    if self.__click_image(readyButton):
-                        self.__sleep(matchDefaultTime, 10)
-
+                    self.__click_image(readyButton)
+                    self.__sleep(matchDefaultTime, 10)
+                        
+                    while not self.__click_image(matchFinish):
+                        self.__sleep(5)
+                    self.__sleep(2)
+                    if self.__find_image(matchLose):
+                        self.numOfLoseMatches += 1
+                        self.emitLog.emit("失敗")
+                    else:
+                        self.emitLog.emit("獲勝")
                     while not self.__click_image(backToLobby):
-                        self.__sleep(30)
+                        self.__sleep(5)
                 except Exception as exc:
                     self.isTerminate = True
                     self.emitError.emit()
@@ -112,6 +125,8 @@ class FvfWorker(AbstractMatchWorker):
         backToLobby = load_img("fvfback")
         reachLimit = load_img("reachLimit")
         modeCheck = load_img("modeCheck")
+        matchFinish = load_img("matchFinish")
+        matchLose = load_img("matchLose")
         matchDefaultTime = 180
         access_match_workflow()
 

@@ -64,18 +64,18 @@ class DynastyWorker(AbstractMatchWorker):
             assert matchLose is not None, "載入圖片失敗: matchLose"
             assert reachLimit is not None, "載入圖片失敗: reachLimit"
             assert modeCheck is not None, "載入圖片失敗: modeCheck"
+            if not self.__find_image(modeCheck):
+                self.emitLog.emit("非【王朝模式】畫面")
+                self.emitError.emit()
+                return
             while self.startTimes > 0 and not self.isTerminate:
-                if not self.__find_image(modeCheck):
-                    self.emitLog.emit("非【王朝模式】畫面")
-                    self.emitError.emit()
-                    return
                 if self.__click_image(reachLimit):
                     self.emitLog.emit("配對次數已達上限")
                     break
-                
                 self.emitLog.emit(f"> 第{self.numOfProcessMatches + 1}場比賽開始 <")
-                if not self.__click_image(startMatch):
+                while not self.__click_image(startMatch):
                     self.emitLog.emit("未找到配對按鈕")
+                    self.__sleep(1)
                     continue
                 self.numOfProcessMatches += 1
                 self.startTimes -= 1
@@ -85,6 +85,7 @@ class DynastyWorker(AbstractMatchWorker):
 
                 while not self.__click_image(matchFinish):
                     self.__sleep(5)
+                self.__sleep(2)
 
                 if self.__find_image(matchLose):
                     self.numOfLoseMatches += 1

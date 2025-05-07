@@ -61,7 +61,7 @@ class MatchAutomationController:
     def _on_finish(self):
         
         self.worker.export_report()
-        self.worker.emitLog.emit("[結束掛機(Finished)]")
+        self.worker.emitLog.emit("[結束掛機]")
         self._reset_ui_state()
 
     def _on_error(self):
