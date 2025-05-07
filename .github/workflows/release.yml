@@ -101,7 +101,7 @@ jobs:
           echo "🔥 Deleting tag: $tag_ref"
           status_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
             -H "Authorization: token $GH_TOKEN" \
-            https://api.github.com/repos/${{ github.repository }}/git/refs/tags/$tag_name)
+            https://api.github.com/repos/${{ github.repository }}/git/refs/tags/$tag_ref)
 
           if [[ "$status_code" != "204" ]]; then
             echo "⚠️ Failed to delete tag $tag_ref (HTTP $status_code)"
