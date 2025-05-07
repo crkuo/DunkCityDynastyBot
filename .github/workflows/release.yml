@@ -10,6 +10,88 @@ jobs:
     runs-on: windows-latest  # Windows 平台打包 .exe
 
     steps:
+    - name: 🔍 Parse tag info
+      id: tag
+      shell: bash
+      run: |
+        CURRENT_TAG="${GITHUB_REF#refs/tags/}"
+        echo "Current tag: $CURRENT_TAG"
+
+        if [[ "$CURRENT_TAG" == *_rc* ]]; then
+          echo "Detected RC version, skipping cleanup"
+          echo "skip_cleanup=true" >> "$GITHUB_OUTPUT"
+          echo "base_tag=SKIP" >> "$GITHUB_OUTPUT"
+        else
+          echo "Detected formal version, will clean rc releases"
+          echo "skip_cleanup=false" >> "$GITHUB_OUTPUT"
+          echo "base_tag=$CURRENT_TAG" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: 🧹 Delete _rc releases and tags
+      if: steps.tag.outputs.skip_cleanup == 'false'
+      shell: bash
+      env:
+        BASE_TAG: ${{ steps.tag.outputs.base_tag }}
+      run: |
+        if [[ -z "${{ secrets.GITHUB_TOKEN }}" ]]; then
+          echo "❌ Error: GITHUB_TOKEN is not set. Exiting."
+          exit 1
+        fi
+
+        echo "🔍 Looking for releases & tags starting with ${BASE_TAG}_rc"
+
+        # === Find matching releases ===
+        releases=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/releases)
+
+        echo "🗒️ Matched releases to delete:"
+        echo "$releases" | jq -r ".[] | select(.tag_name | startswith(\"${BASE_TAG}_rc\")) | .tag_name"
+
+        ids_to_delete=$(echo "$releases" | jq -r ".[] | select(.tag_name | startswith(\"${BASE_TAG}_rc\")) | .id")
+
+        for id in $ids_to_delete; do
+          echo "🔥 Deleting release ID: $id"
+          status_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/$id")
+
+          if [[ "$status_code" != "204" ]]; then
+            echo "⚠️ Failed to delete release ID $id (HTTP $status_code)."
+          else
+            echo "✅ Release ID $id deleted."
+          fi
+        done
+
+        # === Find and delete matching tags ===
+        tags=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/git/refs/tags)
+
+        tag_refs=$(echo "$tags" | jq -r ".[] | .ref" | grep "^refs/tags/${BASE_TAG}_rc")
+
+        if [[ -z "$tag_refs" ]]; then
+          echo "✅ No matching tags to delete."
+        else
+          echo "🗒️ Matched tags to delete:"
+          echo "$tag_refs"
+        fi
+
+        for tag_ref in $tag_refs; do
+          short_ref="${tag_ref#refs/}"  # tags/xxx
+          echo "🔥 Deleting tag: $short_ref"
+
+          status_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/git/refs/$short_ref")
+
+          if [[ "$status_code" != "204" ]]; then
+            echo "⚠️ Failed to delete tag $short_ref (HTTP $status_code)."
+            echo "Response:"
+            curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/git/refs/$short_ref"
+          else
+            echo "✅ Tag $short_ref deleted."
+          fi
+        done
     - name: Checkout code
       uses: actions/checkout@v4
 
@@ -40,89 +122,6 @@ jobs:
         copy LICENSE packaged\
         powershell Compress-Archive -Path packaged\* -DestinationPath DunkCityDynastyBot_win.zip
 
-    - name: 🔍 Parse tag info
-      id: tag
-      shell: bash
-      run: |
-        CURRENT_TAG="${GITHUB_REF#refs/tags/}"
-        echo "Current tag: $CURRENT_TAG"
-
-        if [[ "$CURRENT_TAG" == *_rc* ]]; then
-          echo "Detected RC version, skipping cleanup"
-          echo "skip_cleanup=true" >> "$GITHUB_OUTPUT"
-          echo "base_tag=SKIP" >> "$GITHUB_OUTPUT"
-        else
-          echo "Detected formal version, will clean rc releases"
-          echo "skip_cleanup=false" >> "$GITHUB_OUTPUT"
-          echo "base_tag=$CURRENT_TAG" >> "$GITHUB_OUTPUT"
-        fi
-
-    - name: 🧹 Delete _rc releases and tags
-      if: steps.tag.outputs.skip_cleanup == 'false'
-      shell: bash
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        BASE_TAG: ${{ steps.tag.outputs.base_tag }}
-      run: |
-        if [[ -z "$GH_TOKEN" ]]; then
-            echo "❌ Error: GH_TOKEN is not set. Exiting."
-            exit 1
-        fi
-
-        echo "🔍 Looking for releases & tags starting with ${BASE_TAG}_rc"
-
-        # === Find matching releases ===
-        releases=$(curl -s -H "Authorization: token $GH_TOKEN" \
-          https://api.github.com/repos/${{ github.repository }}/releases)
-
-        echo "🗒️ Matched releases to delete:"
-        echo "$releases" | jq -r ".[] | select(.tag_name | startswith(\"${BASE_TAG}_rc\")) | .tag_name"
-
-        ids_to_delete=$(echo "$releases" | jq -r ".[] | select(.tag_name | startswith(\"${BASE_TAG}_rc\")) | .id")
-
-        for id in $ids_to_delete; do
-          echo "🔥 Deleting release ID: $id"
-          status_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
-            -H "Authorization: token $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/$id")
-
-          if [[ "$status_code" != "204" ]]; then
-            echo "⚠️ Failed to delete release ID $id (HTTP $status_code)."
-          else
-            echo "✅ Release ID $id deleted."
-          fi
-        done
-
-        # === Find and delete matching tags ===
-        tags=$(curl -s -H "Authorization: token $GH_TOKEN" \
-          https://api.github.com/repos/${{ github.repository }}/git/refs/tags)
-
-        tag_refs=$(echo "$tags" | jq -r ".[] | .ref" | grep "^refs/tags/${BASE_TAG}_rc")
-
-        if [[ -z "$tag_refs" ]]; then
-          echo "✅ No matching tags to delete."
-        else
-          echo "🗒️ Matched tags to delete:"
-          echo "$tag_refs"
-        fi
-
-        for tag_ref in $tag_refs; do
-          short_ref="${tag_ref#refs/}"  # tags/xxx
-          echo "🔥 Deleting tag: $short_ref"
-
-          status_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
-            -H "Authorization: token $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/git/refs/$short_ref")
-
-          if [[ "$status_code" != "204" ]]; then
-            echo "⚠️ Failed to delete tag $short_ref (HTTP $status_code)."
-            echo "Response:"
-            curl -s -H "Authorization: token $GH_TOKEN" \
-              "https://api.github.com/repos/${{ github.repository }}/git/refs/$short_ref"
-          else
-            echo "✅ Tag $short_ref deleted."
-          fi
-        done
 
     - name: Upload Release Asset
       uses: softprops/action-gh-release@v2
