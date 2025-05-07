@@ -20,7 +20,6 @@ class FvfWorker(AbstractMatchWorker):
         self.connectPort = ""
         self.startTimes = 0
         self.device = None
-        self.isTerminate = False
         self.numOfProcessMatches = 0
         self.mode = "FVF"
 
@@ -38,26 +37,12 @@ class FvfWorker(AbstractMatchWorker):
         self.randomClick = randomClick
 
     def ChangeTerminateStatus(self):
-        self.isTerminate = True
+        self.isTerminate = not self.isTerminate
 
     def export_report(self):
-        self.emitLog.emit("===== 結束掛機 (5v5 模式) =====")
         self.emitLog.emit(f"共進行了 {self.numOfProcessMatches} 場比賽")
 
     def run(self):
-        self.isStart.emit()
-        self.emitLog.emit("[初始化 5v5 模式]")
-        QThread.sleep(1)
-        try:
-            self.isTerminate = False
-            adb.device(serial=self.connectPort).info
-            self.device = adb.device(serial=self.connectPort)
-            self.emitLog.emit("adb連接成功")
-        except Exception as e:
-            self.emitLog.emit("adb連接失敗")
-            self.isError.emit()
-            return
-        
         def load_img(name):
             pic = None
             images_loc = os.path.join(IMAGE_FOLDER, self.mode)
@@ -68,32 +53,67 @@ class FvfWorker(AbstractMatchWorker):
                 self.isTerminate = True
             return pic
                 
+        def access_match_workflow():
+            assert startMatch is not None, "載入圖片失敗: fvfstart"
+            assert readyButton is not None, "載入圖片失敗: fvfready"
+            assert backToLobby is not None, "載入圖片失敗: fvfback"
+            assert reachLimit is not None, "載入圖片失敗: reachLimit"
+            assert modeCheck is not None, "載入圖片失敗: modeCheck"
+            while self.startTimes > 0 and not self.isTerminate:
+                try:
+                    if not self.__find_image(modeCheck):
+                        self.emitLog.emit("非【五對五全場爭霸】畫面")
+                        self.emitError.emit()
+                        return
+                    if self.__click_image(reachLimit):
+                        self.emitLog.emit("配對次數已達上限")
+                        break
+
+                    self.emitLog.emit(f"> 第{self.numOfProcessMatches + 1}場比賽開始 <")
+                    if not self.__click_image(startMatch):
+                        self.emitLog.emit("未找到配對按鈕")
+                        continue
+                    self.emitLog.emit("開始配對")
+                    self.startTimes -= 1
+                    self.numOfProcessMatches += 1
+                    self.__sleep(5)
+
+                    self.__sleep(matchDefaultTime, 10)
+
+                    if self.__click_image(readyButton):
+                        self.__sleep(matchDefaultTime, 10)
+
+                    while not self.__click_image(backToLobby):
+                        self.__sleep(30)
+                except Exception as exc:
+                    self.isTerminate = True
+                    self.emitError.emit()
+                    return
+            self.emitFinish.emit()
+
+
+        self.emitStart.emit()
+        self.emitLog.emit("[初始化 5v5 模式]")
+        QThread.sleep(1)
+        self.isTerminate = False
+        try:
+            self.TriggerMumuADB()
+            self.connectAdb()
+            self.device = adb.device(serial=self.connectPort)
+            self.emitLog.emit("adb連接成功")
+        except Exception as e:            
+            self.isTerminate = True
+            self.emitLog.emit("adb連接失敗")
+            self.emitError.emit()
+            return
+        
         startMatch = load_img("fvfstart")
         readyButton = load_img("fvfready")
         backToLobby = load_img("fvfback")
-
+        reachLimit = load_img("reachLimit")
+        modeCheck = load_img("modeCheck")
         matchDefaultTime = 180
-
-        while self.startTimes > 0 and not self.isTerminate:
-            self.emitLog.emit(f"> 第{self.numOfProcessMatches + 1}場比賽開始 <")
-
-            while not self.__click_image(startMatch):
-                self.__sleep(4)
-
-            self.emitLog.emit("開始配對")
-            self.startTimes -= 1
-            self.numOfProcessMatches += 1
-            self.__sleep(5)
-
-            self.__sleep(matchDefaultTime, 10)
-
-            if self.__click_image(readyButton):
-                self.__sleep(matchDefaultTime, 10)
-
-            while not self.__click_image(backToLobby):
-                self.__sleep(30)
-
-        self.isFinish.emit()
+        access_match_workflow()
 
     def __sleep(self, sec, random_sec=None):
         base = sec * 1000

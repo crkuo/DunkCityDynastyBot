@@ -14,9 +14,9 @@ class MatchAutomationController:
         self.start = False
 
     def _connect_worker_signals(self):
-        self.worker.isStart.connect(self._on_start)
-        self.worker.isFinish.connect(self._on_finish)
-        self.worker.isError.connect(self._on_error)
+        self.worker.emitStart.connect(self._on_start)
+        self.worker.emitFinish.connect(self._on_finish)
+        self.worker.emitError.connect(self._on_error)
         self.worker.emitLog.connect(self.ui.logTextBrowser.append)
 
     def start_or_stop(self):
@@ -49,6 +49,8 @@ class MatchAutomationController:
 
     def _stop_worker(self):
         self.worker.ChangeTerminateStatus()
+        self.worker.isTerminate = True
+        self.worker.export_report()
         self.ui.logTextBrowser.append("[使用者手動停止]")
         self._update_ui_state(disabled=False)
 
@@ -57,14 +59,19 @@ class MatchAutomationController:
         self._update_ui_state(disabled=True)
 
     def _on_finish(self):
+        
+        self.worker.export_report()
+        self.worker.emitLog.emit("[結束掛機(Finished)]")
         self._reset_ui_state()
 
     def _on_error(self):
+        self.worker.export_report()
+        self.worker.emitLog.emit("[意外結束掛機]")
         self._reset_ui_state()
 
     def _update_ui_state(self, disabled: bool):
-        print(f"_update_ui_state: ",disabled)
         self.ui.startButton.setText("停止" if disabled else "開始")
+        self.ui.modeSelector.setDisabled(disabled)
         self.ui.connectPort.setDisabled(disabled)
         self.ui.randomTimeCheckButton.setDisabled(disabled)
         self.ui.randomClickCheckButton.setDisabled(disabled)
@@ -73,7 +80,7 @@ class MatchAutomationController:
     def _reset_ui_state(self):
         try:
             self.start = False
-            self.worker.export_report()
+            self.worker.ChangeTerminateStatus()
             self._update_ui_state(disabled=self.start)
         except Exception as e:
             self.ui.logTextBrowser.append(f"啟動錯誤：{str(e)}")

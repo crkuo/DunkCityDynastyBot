@@ -24,4 +24,3 @@ class MainWindow(QtWidgets.QWidget):
     def handle_start_clicked(self):
         if self.controller:
             self.controller.start_or_stop()
-        print("Start clicked.")
