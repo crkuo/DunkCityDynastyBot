@@ -5,12 +5,20 @@ from adbutils import adb
 import aircv, random, os, json
 import numpy as np
 from PyQt6.QtCore import QThread
-import time
+import sys
+def resource_path(relative_path: str) -> str:
+    """取得資源的正確路徑，支援 PyInstaller 與開發環境"""
+    if hasattr(sys, "_MEIPASS"):
+        # PyInstaller 打包後的執行環境
+        base_path = sys._MEIPASS
+    else:
+        # 開發階段：__file__ 指的是目前的 Python 檔案位置
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
 
-CONFIG_PATH = "./config.json"
-BASE_FOLDER = os.path.dirname(os.path.dirname(__file__))
-IMAGE_FOLDER = os.path.join(BASE_FOLDER, "assets", "imgs")
-
+# 使用方式：取得圖片資料夾路徑
+IMAGE_FOLDER = resource_path(os.path.join("assets", "imgs"))
+CONFIG_PATH = resource_path("config.json")
 class FvfWorker(AbstractMatchWorker):
     def __init__(self):
         super().__init__()
