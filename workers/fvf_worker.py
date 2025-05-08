@@ -120,7 +120,6 @@ class FvfWorker(AbstractMatchWorker):
         try:
             self.TriggerMumuADB()
             self.connectAdb()
-            self.device = adb.device(serial=self.connectPort)
             self.emitLog.emit("adb連接成功")
         except Exception as e:            
             self.isTerminate = True

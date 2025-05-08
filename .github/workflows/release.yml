@@ -38,39 +38,39 @@ jobs:
         BASE_TAG: ${{ steps.tag.outputs.base_tag }}
       run: |
         echo "🔍 Looking for releases & tags starting with ${BASE_TAG}_rc"
-    
+
         # === List and delete matching releases ===
-        release_tags=$(gh release list --limit 100 --json tagName | jq -r '.[].tagName' | grep "^${BASE_TAG}_rc")
-    
+        release_tags=$(gh release list --limit 100 --json tagName | jq -r '.[].tagName' | grep "^${BASE_TAG}_rc" || true)
+
         if [[ -z "$release_tags" ]]; then
           echo "✅ No matching releases to delete."
         else
           echo "🗒️ Matched releases to delete:"
           echo "$release_tags"
+
+          for tag in $release_tags; do
+            echo "🔥 Deleting release: $tag"
+            gh release delete "$tag" --yes || echo "⚠️ Failed to delete release $tag"
+          done
         fi
-    
-        for tag in $release_tags; do
-          echo "🔥 Deleting release: $tag"
-          gh release delete "$tag" --yes || echo "⚠️ Failed to delete release $tag"
-        done
-    
+
         # === Delete matching Git tags ===
         git fetch --tags
-        git_tags=$(git ls-remote --tags origin | awk '{print $2}' | grep "^refs/tags/${BASE_TAG}_rc")
-    
+        git_tags=$(git ls-remote --tags origin | awk '{print $2}' | grep "^refs/tags/${BASE_TAG}_rc" || true)
+
         if [[ -z "$git_tags" ]]; then
           echo "✅ No matching git tags to delete."
         else
           echo "🗒️ Matched git tags to delete:"
           echo "$git_tags"
+
+          for ref in $git_tags; do
+            tag="${ref#refs/tags/}"
+            echo "🔥 Deleting git tag: $tag"
+            git push origin ":refs/tags/$tag" || echo "⚠️ Failed to delete tag $tag"
+          done
         fi
-    
-        for ref in $git_tags; do
-          tag="${ref#refs/tags/}"
-          echo "🔥 Deleting git tag: $tag"
-          git push origin ":refs/tags/$tag" || echo "⚠️ Failed to delete tag $tag"
-        done
-      
+              
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
