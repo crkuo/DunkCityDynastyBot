@@ -8,14 +8,13 @@ from PyQt6.QtCore import QThread
 import sys
 def resource_path(relative_path: str) -> str:
     """取得資源的正確路徑，支援 PyInstaller 與開發環境"""
-    if hasattr(sys, "_MEIPASS"):
-        # PyInstaller 打包後的執行環境
-        base_path = sys._MEIPASS
+    if getattr(sys, 'frozen', False):
+        # PyInstaller 打包後的 .exe
+        base_path = os.path.dirname(sys.executable)
     else:
-        # 開發階段：__file__ 指的是目前的 Python 檔案位置
+        # 開發階段，用 script 跑
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
-
 # 使用方式：取得圖片資料夾路徑
 IMAGE_FOLDER = resource_path(os.path.join("assets", "imgs"))
 CONFIG_PATH = resource_path("config.json")
